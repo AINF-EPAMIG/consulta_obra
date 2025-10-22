@@ -34,7 +34,11 @@ export async function GET(request: NextRequest) {
       ? `WHERE ${whereConditions.join(' AND ')}` 
       : '';
     
-    // Buscar obras com nome da regional
+    // Buscar obras com nome da regional - conectar ao banco de contratos para ordenar
+    connectionContratos = await contratosDB.getConnection();
+    console.log("Conexão com banco de contratos estabelecida");
+    
+    // Buscar obras com nome da regional e número do contrato para ordenar por ano
     const [obras] = await connectionObras.query<RowDataPacket[]>(
       `SELECT 
         o.id,
@@ -45,7 +49,7 @@ export async function GET(request: NextRequest) {
        FROM obra o
        LEFT JOIN regional r ON o.unidade_id = r.id
        ${whereClause}
-       ORDER BY o.id DESC`,
+       ORDER BY o.contrato_id DESC, o.id DESC`,
       queryParams
     );
 
@@ -56,10 +60,6 @@ export async function GET(request: NextRequest) {
       obra.contrato_id && obra.contrato_id !== null && obra.contrato_id > 0
     );
     console.log(`Obras com contrato_id válido: ${obrasComContratoId.length} de ${obras.length}`);
-    
-    // Buscar dados dos contratos no banco de contratos
-    connectionContratos = await contratosDB.getConnection();
-    console.log("Conexão com banco de contratos estabelecida");
     
     // Coletar IDs únicos de contratos para buscar em batch
     const contratoIds = [...new Set(obrasComContratoId.map(obra => obra.contrato_id))];
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         `SELECT id, numero_contratoh, objetoh, dotacao_orcamentariah, valorh
          FROM historico 
          WHERE id IN (${placeholdersHistAll})
-         ORDER BY id DESC`,
+         ORDER BY CAST(SUBSTRING_INDEX(numero_contratoh, '/', 1) AS UNSIGNED) DESC, id DESC`,
         contratoIds
       );
 
@@ -229,9 +229,16 @@ export async function GET(request: NextRequest) {
 
     console.log(`Total de status diferentes: ${statusCount.length}`);
 
+    // Ordenar obras pelo ano do contrato (primeiros 4 dígitos de numero_contrato) em ordem decrescente
+    const obrasOrdenadas = obrasComContratos.sort((a, b) => {
+      const anoA = a.numero_contrato ? parseInt(a.numero_contrato.split('/')[0]) : 0;
+      const anoB = b.numero_contrato ? parseInt(b.numero_contrato.split('/')[0]) : 0;
+      return anoB - anoA; // Ordem decrescente (ano mais recente primeiro)
+    });
+
     return NextResponse.json({
       success: true,
-      obras: obrasComContratos,
+      obras: obrasOrdenadas,
       statusCount,
       regionais,
     });
