@@ -481,19 +481,7 @@ export default function ConsultaObra() {
                               {obra.numero_contrato ? (
                                 <button
                                   onClick={() => abrirModalContrato(obra.numero_contrato || '', obra.objeto_contrato || '')}
-                                  className="group w-full text-left p-3 rounded-lg border-2 transition-all hover:shadow-lg"
-                                  style={{ 
-                                    borderColor: '#025C3E',
-                                    backgroundColor: 'white'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#f0fdf4';
-                                    e.currentTarget.style.borderColor = '#014830';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'white';
-                                    e.currentTarget.style.borderColor = '#025C3E';
-                                  }}
+                                  className="group w-full text-left p-3 transition-all hover:shadow-lg"
                                 >
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
