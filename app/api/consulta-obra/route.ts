@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       `SELECT 
         o.id,
         o.contrato_id,
+        o.contrato_numero,
         o.status_id,
         o.unidade_id,
         r.nome as regional_nome
@@ -167,21 +168,50 @@ export async function GET(request: NextRequest) {
             console.log(`❌ Contrato ${obra.contrato_id} não encontrado para obra ${obra.id}`);
           }
           
-          // Buscar arquivos PDF da obra
+          // Buscar arquivos da obra - agrupados por contrato_numero
           let arquivos: RowDataPacket[] = [];
+          let arquivosContrato: RowDataPacket[] = [];
+
           try {
+            // Buscar arquivos da própria obra
             const [result] = await connectionObras!.query<RowDataPacket[]>(
-              `SELECT id, tipo, nome_arquivo, path_servidor
+              `SELECT id, tipo, nome_arquivo, path_servidor, obra_id
                FROM arquivoobra 
-               WHERE obra_id = ? AND extensao = 'pdf' AND tipo != 'Contrato'
-               ORDER BY id ASC`,
+               WHERE obra_id = ?
+               ORDER BY tipo ASC, id ASC`,
               [obra.id]
             );
             arquivos = result || [];
-            console.log(`📄 Arquivos PDF para obra ${obra.id}: ${arquivos.length}`);
+            console.log(`📄 Arquivos para obra ${obra.id}: ${arquivos.length}`);
+
+            // Se a obra tem contrato, buscar também arquivos de outras obras com mesmo contrato_numero
+            if (contrato?.numero_contrato && obra.contrato_numero) {
+              // Buscar todas as obras com mesmo contrato_numero
+              const [obrasRelacionadas] = await connectionObras!.query<RowDataPacket[]>(
+                `SELECT id FROM obra WHERE contrato_numero = ? AND id != ?`,
+                [obra.contrato_numero, obra.id]
+              );
+
+              if (obrasRelacionadas && obrasRelacionadas.length > 0) {
+                const obraIds = obrasRelacionadas.map((o: RowDataPacket) => o.id);
+                const placeholders = obraIds.map(() => '?').join(',');
+
+                // Buscar arquivos de todas as obras relacionadas
+                const [resultRelacionados] = await connectionObras!.query<RowDataPacket[]>(
+                  `SELECT id, tipo, nome_arquivo, path_servidor, obra_id
+                   FROM arquivoobra 
+                   WHERE obra_id IN (${placeholders})
+                   ORDER BY obra_id ASC, tipo ASC, id ASC`,
+                  obraIds
+                );
+                arquivosContrato = resultRelacionados || [];
+                console.log(`📄 Arquivos do contrato ${obra.contrato_numero}: ${arquivosContrato.length}`);
+              }
+            }
           } catch (arquivoError) {
             console.error(`Erro ao buscar arquivos da obra ${obra.id}:`, arquivoError);
             arquivos = [];
+            arquivosContrato = [];
           }
           
           return {
@@ -191,9 +221,17 @@ export async function GET(request: NextRequest) {
             valor_contrato: contrato?.valor ?? null,
             arquivos: arquivos.map((arq: RowDataPacket) => ({
               id: arq.id,
-              tipo: (arq.tipo as string) || 'PDF',
+              tipo: (arq.tipo as string) || 'Arquivo',
               nome: (arq.nome_arquivo as string) || (arq.nome as string) || 'Arquivo sem nome',
-              url: `https://epamigsistema.com/obras/web/${arq.path_servidor}`
+              url: `https://epamigsistema.com/obras/web/${arq.path_servidor}`,
+              obra_id: arq.obra_id
+            })),
+            arquivos_contrato: arquivosContrato.map((arq: RowDataPacket) => ({
+              id: arq.id,
+              tipo: (arq.tipo as string) || 'Arquivo',
+              nome: (arq.nome_arquivo as string) || (arq.nome as string) || 'Arquivo sem nome',
+              url: `https://epamigsistema.com/obras/web/${arq.path_servidor}`,
+              obra_id: arq.obra_id
             }))
           };
         } catch (error) {

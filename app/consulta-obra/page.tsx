@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Header from "@/components/header";
 import { Footer } from "@/components/footer";
+import ObraDetalhes from "@/components/ObraDetalhes";
 import "./consulta-obra.css";
 
 interface Arquivo {
@@ -10,6 +11,7 @@ interface Arquivo {
   tipo: string;
   nome: string;
   url: string;
+  obra_id: number;
 }
 
 interface Obra {
@@ -22,6 +24,7 @@ interface Obra {
   objeto_contrato: string | null;
   valor_contrato: number | null;
   arquivos: Arquivo[];
+  arquivos_contrato?: Arquivo[];
 }
 
 interface ContratoOption {
@@ -69,6 +72,30 @@ const tipoArquivoLabels: { [key: string]: string } = {
   "projeto_aditivado": "Projeto Aditivado",
 };
 
+// Funções auxiliares movidas para fora para evitar recriação
+const getTipoArquivoLabel = (tipo: string): string => {
+  return tipoArquivoLabels[tipo] || tipo;
+};
+
+const getStatusName = (statusId: number): string => {
+  return statusNames[statusId] || `Status ${statusId}`;
+};
+
+const getStatusColor = (statusId: number): string => {
+  return statusColors[statusId] || "#6b7280";
+};
+
+const formatarValor = (valor: number | null): string => {
+  if (!valor || valor === 0 || isNaN(valor)) return "";
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(valor);
+};
+
 export default function ConsultaObra() {
   const [obras, setObras] = useState<Obra[]>([]);
   const [statusCount, setStatusCount] = useState<StatusCount[]>([]);
@@ -80,7 +107,6 @@ export default function ConsultaObra() {
   // Estados dos filtros
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedUnidade, setSelectedUnidade] = useState<string>('');
-  const [selectedContrato, setSelectedContrato] = useState<string>('');
   const [contratoSearch, setContratoSearch] = useState<string>('');
   const [showContratoDropdown, setShowContratoDropdown] = useState<boolean>(false);
   const [modalArquivos, setModalArquivos] = useState<Arquivo[] | null>(null);
@@ -89,10 +115,14 @@ export default function ConsultaObra() {
   const [showModalContrato, setShowModalContrato] = useState<boolean>(false);
   const [showRelatorioFinanceiro, setShowRelatorioFinanceiro] = useState<boolean>(false);
   const [abaAtiva, setAbaAtiva] = useState<'status' | 'regional' | 'graficos'>('status');
+  const [obraSelecionada, setObraSelecionada] = useState<Obra | null>(null);
 
-  const abrirModalArquivos = (arquivos: Arquivo[]) => {
-    setModalArquivos(arquivos);
-    setShowModalArquivos(true);
+  const abrirDetalhesObra = (obra: Obra) => {
+    setObraSelecionada(obra);
+  };
+
+  const fecharDetalhesObra = () => {
+    setObraSelecionada(null);
   };
 
   const fecharModalArquivos = () => {
@@ -118,8 +148,17 @@ export default function ConsultaObra() {
     setShowRelatorioFinanceiro(false);
   };
 
-  // Cálculos financeiros por status
-  const calcularFinanceirosPorStatus = () => {
+  const getTotalObras = useCallback(() => {
+    return statusCount.reduce((acc, item) => acc + item.total, 0);
+  }, [statusCount]);
+
+  const getPercentage = useCallback((total: number): number => {
+    const totalObras = getTotalObras();
+    return totalObras > 0 ? (total / totalObras) * 100 : 0;
+  }, [getTotalObras]);
+
+  // Cálculos financeiros por status (memoizado)
+  const financeirosPorStatus = useMemo(() => {
     const financeiros: { [key: number]: { total: number; valor: number; obras_com_valor: number } } = {};
     
     obras.forEach(obra => {
@@ -128,7 +167,6 @@ export default function ConsultaObra() {
       }
       financeiros[obra.status_id].total += 1;
       
-      // Só somar se o valor for válido (não null, não 0, não NaN)
       if (obra.valor_contrato && !isNaN(obra.valor_contrato) && obra.valor_contrato > 0) {
         financeiros[obra.status_id].valor += obra.valor_contrato;
         financeiros[obra.status_id].obras_com_valor += 1;
@@ -143,10 +181,10 @@ export default function ConsultaObra() {
       obras_com_valor: data.obras_com_valor,
       valor_total: data.valor
     })).sort((a, b) => b.valor_total - a.valor_total);
-  };
+  }, [obras]);
 
-  // Cálculos financeiros por regional
-  const calcularFinanceirosPorRegional = () => {
+  // Cálculos financeiros por regional (memoizado)
+  const financeirosPorRegional = useMemo(() => {
     const financeiros: { [key: string]: { total: number; valor: number; obras_com_valor: number } } = {};
     
     obras.forEach(obra => {
@@ -156,7 +194,6 @@ export default function ConsultaObra() {
       }
       financeiros[regional].total += 1;
       
-      // Só somar se o valor for válido (não null, não 0, não NaN)
       if (obra.valor_contrato && !isNaN(obra.valor_contrato) && obra.valor_contrato > 0) {
         financeiros[regional].valor += obra.valor_contrato;
         financeiros[regional].obras_com_valor += 1;
@@ -169,14 +206,13 @@ export default function ConsultaObra() {
       obras_com_valor: data.obras_com_valor,
       valor_total: data.valor
     })).sort((a, b) => b.valor_total - a.valor_total);
-  };
+  }, [obras]);
 
-  // Calcular totais gerais
-  const calcularTotaisGerais = () => {
+  // Calcular totais gerais (memoizado)
+  const totaisGerais = useMemo(() => {
     const total_obras = obras.length;
     
-    // Filtrar apenas obras com valores válidos
-    const obrasComValor = obras.filter(obra => 
+    const obrasComValor = obras.filter(obra =>
       obra.valor_contrato && !isNaN(obra.valor_contrato) && obra.valor_contrato > 0
     );
     
@@ -191,7 +227,7 @@ export default function ConsultaObra() {
       obras_sem_valor,
       valor_medio
     };
-  };
+  }, [obras]);
 
   const fetchObras = useCallback(async () => {
     try {
@@ -207,13 +243,24 @@ export default function ConsultaObra() {
 
       if (data.success) {
         console.log("Total de obras recebidas:", data.obras?.length);
-        setObras(data.obras);
+
+        // Agrupa as obras por numero_contrato, mantendo apenas a mais recente (maior id)
+        const obrasAgrupadas: { [key: string]: Obra } = {};
+        data.obras.forEach((obra: Obra) => {
+          const key = obra.numero_contrato || `sem-contrato-${obra.id}`;
+          if (!obrasAgrupadas[key] || obra.id > obrasAgrupadas[key].id) {
+            obrasAgrupadas[key] = obra;
+          }
+        });
+        const obrasProcessadas = Object.values(obrasAgrupadas);
+
+        setObras(obrasProcessadas);
         setStatusCount(data.statusCount);
         if (data.regionais) setRegionais(data.regionais);
         
         // Extrair contratos únicos disponíveis com objeto
         const contratosMap = new Map<string, ContratoOption>();
-        data.obras.forEach((obra: Obra) => {
+        obrasProcessadas.forEach((obra: Obra) => {
           if (obra.numero_contrato) {
             const key = obra.numero_contrato;
             if (!contratosMap.has(key)) {
@@ -249,56 +296,26 @@ export default function ConsultaObra() {
   const handleClearFilters = () => {
     setSelectedStatus("all");
     setSelectedUnidade("all");
-    setSelectedContrato("");
     setContratoSearch("");
   };
 
-  // Filtrar obras por contrato digitado
-  const obrasFiltradas = obras.filter((obra) => {
-    if (!selectedContrato && !contratoSearch) return true;
-    
-    const numeroContrato = obra.numero_contrato?.toLowerCase() || "";
-    const searchTerm = (selectedContrato || contratoSearch).toLowerCase();
-    
-    return numeroContrato.includes(searchTerm);
-  });
+  // Filtrar obras por contrato digitado (memoizado)
+  const obrasFiltradas = useMemo(() => {
+    if (!contratoSearch) return obras;
 
-  // Filtrar lista de contratos conforme digitação
-  const contratosFiltrados = contratosDisponiveis.filter((contrato) =>
-    contrato.display.toLowerCase().includes(contratoSearch.toLowerCase())
-  );
+    const searchTerm = contratoSearch.toLowerCase();
 
-  const getTipoArquivoLabel = (tipo: string): string => {
-    return tipoArquivoLabels[tipo] || tipo;
-  };
+    return obras.filter((obra) => {
+      const numeroContrato = obra.numero_contrato?.toLowerCase() || "";
+      return numeroContrato.includes(searchTerm);
+    });
+  }, [obras, contratoSearch]);
 
-  const getStatusName = (statusId: number): string => {
-    return statusNames[statusId] || `Status ${statusId}`;
-  };
-
-  const getStatusColor = (statusId: number): string => {
-    return statusColors[statusId] || "#6b7280";
-  };
-
-  const formatarValor = (valor: number | null): string => {
-    if (!valor || valor === 0 || isNaN(valor)) return "";
-    
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(valor);
-  };
-
-  const getTotalObras = () => {
-    return statusCount.reduce((acc, item) => acc + item.total, 0);
-  };
-
-  const getPercentage = (total: number): number => {
-    const totalObras = getTotalObras();
-    return totalObras > 0 ? (total / totalObras) * 100 : 0;
-  };
+  // Filtrar lista de contratos conforme digitação (memoizado)
+  const contratosFiltrados = useMemo(() =>
+    contratosDisponiveis.filter((contrato) =>
+      contrato.display.toLowerCase().includes(contratoSearch.toLowerCase())
+    ), [contratosDisponiveis, contratoSearch]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -394,7 +411,6 @@ export default function ConsultaObra() {
                         key={index}
                         onClick={() => {
                           setContratoSearch(contrato.numero);
-                          setSelectedContrato(contrato.numero);
                           setShowContratoDropdown(false);
                         }}
                         className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
@@ -521,21 +537,23 @@ export default function ConsultaObra() {
                               {obra.regional_nome || "Não informado"}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {obra.arquivos && obra.arquivos.length > 0 ? (
-                                <button
-                                  onClick={() => abrirModalArquivos(obra.arquivos)}
-                                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-90 transition-all hover:shadow-lg"
-                                  style={{ backgroundColor: '#1E3A8A' }}
-                                  title="Ver arquivos PDF"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                  </svg>
-                                  Ver ({obra.arquivos.length})
-                                </button>
-                              ) : (
-                                <span className="text-gray-400 text-xs">Sem arquivos</span>
-                              )}
+                              <button
+                                onClick={() => abrirDetalhesObra(obra)}
+                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-90 transition-all hover:shadow-lg"
+                                style={{ backgroundColor: '#025C3E' }}
+                                title="Ver detalhes da obra"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                Ver Detalhes
+                                {obra.arquivos && obra.arquivos.length > 0 && (
+                                  <span className="ml-1 bg-white bg-opacity-30 px-2 py-0.5 rounded-full text-xs">
+                                    {obra.arquivos.length}
+                                  </span>
+                                )}
+                              </button>
                             </td>
                           </tr>
                         ))
@@ -892,8 +910,8 @@ export default function ConsultaObra() {
                         </tr>
                       </thead>
                       <tbody>
-                        {calcularFinanceirosPorStatus().map((item, index) => {
-                          const totais = calcularTotaisGerais();
+                        {financeirosPorStatus.map((item, index) => {
+                          const totais = totaisGerais;
                           const percentual = totais.valor_total > 0 ? (item.valor_total / totais.valor_total * 100) : 0;
                           return (
                             <tr key={index} className="hover:bg-gray-50">
@@ -919,9 +937,9 @@ export default function ConsultaObra() {
                         })}
                         <tr className="bg-gray-200 font-bold">
                           <td className="px-4 py-3 border">TOTAL GERAL</td>
-                          <td className="px-4 py-3 text-center border">{calcularTotaisGerais().total_obras}</td>
+                          <td className="px-4 py-3 text-center border">{totaisGerais.total_obras}</td>
                           <td className="px-4 py-3 text-right border text-green-800">
-                            {calcularTotaisGerais().valor_total > 0 ? formatarValor(calcularTotaisGerais().valor_total) : (
+                            {totaisGerais.valor_total > 0 ? formatarValor(totaisGerais.valor_total) : (
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
@@ -943,8 +961,8 @@ export default function ConsultaObra() {
                     <div className="relative" style={{ width: '320px', height: '320px' }}>
                       <svg viewBox="0 0 200 200" className="transform -rotate-90">
                         {(() => {
-                          const financeiros = calcularFinanceirosPorStatus();
-                          const totais = calcularTotaisGerais();
+                          const financeiros = financeirosPorStatus;
+                          const totais = totaisGerais;
                           let currentAngle = 0;
                           
                           return financeiros.map((item, index) => {
@@ -996,7 +1014,7 @@ export default function ConsultaObra() {
                       {/* Texto no centro */}
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
                         <div className="text-2xl font-bold text-gray-800">
-                          {calcularTotaisGerais().total_obras}
+                          {totaisGerais.total_obras}
                         </div>
                         <div className="text-sm text-gray-600">Obras</div>
                       </div>
@@ -1004,8 +1022,8 @@ export default function ConsultaObra() {
                     
                     {/* Legenda */}
                     <div className="space-y-3">
-                      {calcularFinanceirosPorStatus().map((item, index) => {
-                        const totais = calcularTotaisGerais();
+                      {financeirosPorStatus.map((item, index) => {
+                        const totais = totaisGerais;
                         const percentual = totais.valor_total > 0 ? (item.valor_total / totais.valor_total * 100) : 0;
                         
                         return (
@@ -1050,12 +1068,12 @@ export default function ConsultaObra() {
                                 TOTAL GERAL
                               </span>
                               <span className="text-xs text-gray-600">
-                                {calcularTotaisGerais().total_obras} obras
+                                {totaisGerais.total_obras} obras
                               </span>
                             </div>
                             <div className="flex justify-between items-baseline mt-0.5">
                               <span className="text-base font-bold text-green-800">
-                                {calcularTotaisGerais().valor_total > 0 ? formatarValor(calcularTotaisGerais().valor_total) : (
+                                {totaisGerais.valor_total > 0 ? formatarValor(totaisGerais.valor_total) : (
                                   <span className="text-gray-400">-</span>
                                 )}
                               </span>
@@ -1080,12 +1098,12 @@ export default function ConsultaObra() {
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                       <div className="text-sm text-blue-700 font-medium">Total de Obras</div>
-                      <div className="text-2xl font-bold text-blue-900">{calcularTotaisGerais().total_obras}</div>
+                      <div className="text-2xl font-bold text-blue-900">{totaisGerais.total_obras}</div>
                     </div>
                     <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
                       <div className="text-sm text-green-700 font-medium">Valor Total</div>
                       <div className="text-xl font-bold text-green-900">
-                        {calcularTotaisGerais().valor_total > 0 ? formatarValor(calcularTotaisGerais().valor_total) : (
+                        {totaisGerais.valor_total > 0 ? formatarValor(totaisGerais.valor_total) : (
                           <span className="text-gray-400 text-lg">Sem valor</span>
                         )}
                       </div>
@@ -1093,14 +1111,14 @@ export default function ConsultaObra() {
                     <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
                       <div className="text-sm text-yellow-700 font-medium">Valor Médio</div>
                       <div className="text-xl font-bold text-yellow-900">
-                        {calcularTotaisGerais().valor_medio > 0 ? formatarValor(calcularTotaisGerais().valor_medio) : (
+                        {totaisGerais.valor_medio > 0 ? formatarValor(totaisGerais.valor_medio) : (
                           <span className="text-gray-400 text-lg">Sem valor</span>
                         )}
                       </div>
                     </div>
                     <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
                       <div className="text-sm text-red-700 font-medium">Sem Valor Informado</div>
-                      <div className="text-2xl font-bold text-red-900">{calcularTotaisGerais().obras_sem_valor}</div>
+                      <div className="text-2xl font-bold text-red-900">{totaisGerais.obras_sem_valor}</div>
                     </div>
                   </div>
 
@@ -1108,8 +1126,8 @@ export default function ConsultaObra() {
                   <div className="bg-white border border-gray-200 rounded-lg p-6">
                     <h5 className="font-bold text-gray-700 mb-4">Distribuição de Valores por Status</h5>
                     <div className="space-y-3">
-                      {calcularFinanceirosPorStatus().map((item, index) => {
-                        const totais = calcularTotaisGerais();
+                      {financeirosPorStatus.map((item, index) => {
+                        const totais = totaisGerais;
                         const percentual = totais.valor_total > 0 ? (item.valor_total / totais.valor_total * 100) : 0;
                         return (
                           <div key={index}>
@@ -1143,8 +1161,8 @@ export default function ConsultaObra() {
                   <div className="bg-white border border-gray-200 rounded-lg p-6">
                     <h5 className="font-bold text-gray-700 mb-4">Distribuição de Valores por Regional</h5>
                     <div className="space-y-3">
-                      {calcularFinanceirosPorRegional().map((item, index) => {
-                        const totais = calcularTotaisGerais();
+                      {financeirosPorRegional.map((item, index) => {
+                        const totais = totaisGerais;
                         const percentual = totais.valor_total > 0 ? (item.valor_total / totais.valor_total * 100) : 0;
                         const cores = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
                         const cor = cores[index % cores.length];
@@ -1197,6 +1215,11 @@ export default function ConsultaObra() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Detalhes da Obra */}
+      {obraSelecionada && (
+        <ObraDetalhes obra={obraSelecionada} onClose={fecharDetalhesObra} />
       )}
     </div>
   );

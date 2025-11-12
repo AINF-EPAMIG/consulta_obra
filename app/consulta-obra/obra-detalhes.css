@@ -1,0 +1,125 @@
+/* Estilos para o componente ObraDetalhes */
+.obra-detalhes-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.obra-detalhes-modal {
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 72rem;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.obra-detalhes-header {
+  background: linear-gradient(to right, #166534, #15803d);
+  color: white;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.obra-detalhes-tabs {
+  border-bottom: 2px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.obra-detalhes-tab {
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.obra-detalhes-tab:hover {
+  color: #166534;
+  border-bottom-color: #d1d5db;
+}
+
+.obra-detalhes-tab.active {
+  border-bottom-color: #166534;
+  color: #166534;
+  background: white;
+}
+
+.obra-detalhes-content {
+  flex: 1;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+.projeto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.projeto-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.projeto-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .obra-detalhes-modal {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .obra-detalhes-header {
+    padding: 1rem;
+  }
+
+  .projeto-grid {
+    grid-template-columns: 1fr;
+    padding: 0.75rem;
+  }
+
+  .obra-detalhes-tabs {
+    padding-bottom: 0.5rem;
+  }
+
+  .obra-detalhes-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .projeto-grid {
+    gap: 0.75rem;
+  }
+
+  .projeto-card {
+    padding: 0.75rem;
+  }
+}
+
