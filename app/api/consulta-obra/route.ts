@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     console.log(`IDs únicos de contratos a buscar: ${contratoIds.join(', ')}`);
     
     // Buscar todos os contratos de uma vez (mais eficiente)
-    const contratosMap = new Map<number, { numero_contrato?: string; objetoh?: string; valor?: number }>();
+    const contratosMap = new Map<number, { numero_contrato?: string; objetoh?: string; valor?: number; instrumento_nome?: string }>();
     if (contratoIds.length > 0) {
       const placeholders = contratoIds.map(() => '?').join(',');
 
@@ -105,10 +105,11 @@ export async function GET(request: NextRequest) {
       // Buscar dados no `historico` para todos os IDs — usar `valorh` como fonte primária do valor
       const placeholdersHistAll = contratoIds.map(() => '?').join(',');
       const [contratosHistAll] = await connectionContratos.query<RowDataPacket[]>(
-        `SELECT id, numero_contratoh, objetoh, dotacao_orcamentariah, valorh
-         FROM historico 
-         WHERE id IN (${placeholdersHistAll})
-         ORDER BY CAST(SUBSTRING_INDEX(numero_contratoh, '/', 1) AS UNSIGNED) DESC, id DESC`,
+        `SELECT h.id, h.numero_contratoh, h.objetoh, h.dotacao_orcamentariah, h.valorh, i.nome_instrumento
+         FROM historico h
+         LEFT JOIN instrumento i ON i.id = h.instrumento_id
+         WHERE h.id IN (${placeholdersHistAll})
+         ORDER BY CAST(SUBSTRING_INDEX(h.numero_contratoh, '/', 1) AS UNSIGNED) DESC, h.id DESC`,
         contratoIds
       );
 
@@ -121,6 +122,7 @@ export async function GET(request: NextRequest) {
           objetoh: existing.objetoh || (contrato.objetoh as string),
           // Priorizar valorh do historico (valorh) como número
           valor: Number(contrato.valorh as unknown) || undefined,
+          instrumento_nome: contrato.nome_instrumento as string || 'Sem instrumento',
         });
         console.log(`✅ Contrato (hist) ${id}: ${contrato.numero_contratoh} - Valor: R$ ${contrato.valorh || 'NULL'}`);
       });
@@ -177,6 +179,8 @@ export async function GET(request: NextRequest) {
           // Buscar arquivos da obra - agrupados por contrato_numero
           let arquivos: RowDataPacket[] = [];
           let arquivosContrato: RowDataPacket[] = [];
+          let arquivosContratoBase: RowDataPacket[] = [];
+          const obrasComContratoInfo: { [obraId: number]: { contrato_numero: string; instrumento_nome: string; label: string } } = {};
 
           try {
             // Buscar arquivos da própria obra
@@ -194,11 +198,36 @@ export async function GET(request: NextRequest) {
             if (contrato?.numero_contrato && obra.contrato_numero) {
               // Buscar todas as obras com mesmo contrato_numero
               const [obrasRelacionadas] = await connectionObras!.query<RowDataPacket[]>(
-                `SELECT id FROM obra WHERE contrato_numero = ? AND id != ?`,
+                `SELECT id, contrato_id FROM obra WHERE contrato_numero = ? AND id != ?`,
                 [obra.contrato_numero, obra.id]
               );
 
+              // Criar mapa de informações das obras (contrato_numero + instrumento)
+              obrasComContratoInfo[obra.id] = {
+                contrato_numero: contrato.numero_contrato || 'N/A',
+                instrumento_nome: contrato.instrumento_nome || 'Sem instrumento',
+                label: `${contrato.numero_contrato || 'N/A'} - ${contrato.instrumento_nome || 'Sem instrumento'}`
+              };
+
               if (obrasRelacionadas && obrasRelacionadas.length > 0) {
+                // Buscar informações de contrato para cada obra relacionada
+                for (const obraRel of obrasRelacionadas) {
+                  const contratoRel = contratosMap.get(Number(obraRel.contrato_id));
+                  if (contratoRel) {
+                    obrasComContratoInfo[obraRel.id] = {
+                      contrato_numero: contratoRel.numero_contrato || 'N/A',
+                      instrumento_nome: contratoRel.instrumento_nome || 'Sem instrumento',
+                      label: `${contratoRel.numero_contrato || 'N/A'} - ${contratoRel.instrumento_nome || 'Sem instrumento'}`
+                    };
+                  } else {
+                    obrasComContratoInfo[obraRel.id] = {
+                      contrato_numero: obra.contrato_numero || 'N/A',
+                      instrumento_nome: 'Sem contrato',
+                      label: `Obra #${obraRel.id} - Sem contrato`
+                    };
+                  }
+                }
+
                 const obraIds = obrasRelacionadas.map((o: RowDataPacket) => o.id);
                 const placeholders = obraIds.map(() => '?').join(',');
 
@@ -213,18 +242,50 @@ export async function GET(request: NextRequest) {
                 arquivosContrato = resultRelacionados || [];
                 console.log(`📄 Arquivos do contrato ${obra.contrato_numero}: ${arquivosContrato.length}`);
               }
+
+              // Buscar arquivos do contrato na base 'contratos'
+              try {
+                // Buscar todos os contratos com o mesmo numero_contratoh
+                const [contratosRelacionados] = await connectionContratos!.query<RowDataPacket[]>(
+                  `SELECT id, numero_contratoh, valorh 
+                   FROM historico 
+                   WHERE numero_contratoh = ?`,
+                  [obra.contrato_numero]
+                );
+
+                if (contratosRelacionados && contratosRelacionados.length > 0) {
+                  const historicoIds = contratosRelacionados.map((c: RowDataPacket) => c.id);
+                  const placeholdersHist = historicoIds.map(() => '?').join(',');
+
+                  // Buscar arquivos desses contratos
+                  const [arquivosHist] = await connectionContratos!.query<RowDataPacket[]>(
+                    `SELECT a.nome_arquivo, a.path_servidor, a.historico_id, h.valorh
+                     FROM arquivo a
+                     INNER JOIN historico h ON a.historico_id = h.id
+                     WHERE a.historico_id IN (${placeholdersHist})`,
+                    historicoIds
+                  );
+                  arquivosContratoBase = arquivosHist || [];
+                  console.log(`📄 Arquivos da base contratos para ${obra.contrato_numero}: ${arquivosContratoBase.length}`);
+                }
+              } catch (contratoBaseError) {
+                console.error(`Erro ao buscar arquivos da base contratos:`, contratoBaseError);
+                arquivosContratoBase = [];
+              }
             }
           } catch (arquivoError) {
             console.error(`Erro ao buscar arquivos da obra ${obra.id}:`, arquivoError);
             arquivos = [];
             arquivosContrato = [];
+            arquivosContratoBase = [];
           }
-          
+
           return {
             ...obra,
             numero_contrato: contrato?.numero_contrato || null,
             objeto_contrato: contrato?.objetoh || null,
             valor_contrato: contrato?.valor ?? null,
+            instrumento_nome: contrato?.instrumento_nome || null,
             arquivos: arquivos.map((arq: RowDataPacket) => ({
               id: arq.id,
               tipo: (arq.tipo as string) || 'Arquivo',
@@ -238,7 +299,14 @@ export async function GET(request: NextRequest) {
               nome: (arq.nome_arquivo as string) || (arq.nome as string) || 'Arquivo sem nome',
               url: `https://epamigsistema.com/obras/web/${arq.path_servidor}`,
               obra_id: arq.obra_id
-            }))
+            })),
+            arquivos_contrato_base: arquivosContratoBase.map((arq: RowDataPacket) => ({
+              nome: (arq.nome_arquivo as string) || 'Arquivo sem nome',
+              url: `https://epamig.tech/contratos/web/${arq.path_servidor}`,
+              historico_id: arq.historico_id,
+              valor: arq.valorh ? Number(arq.valorh) : null
+            })),
+            obras_contrato_info: obrasComContratoInfo
           };
         } catch (error) {
           console.error(`❌ Erro ao processar obra ${obra.id}:`, error);

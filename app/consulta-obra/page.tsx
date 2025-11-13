@@ -11,7 +11,20 @@ interface Arquivo {
   tipo: string;
   nome: string;
   url: string;
-  obra_id: number;
+  obra_id?: number;
+}
+
+interface ArquivoContratoBase {
+  nome: string;
+  url: string;
+  historico_id: number;
+  valor: number | null;
+}
+
+interface ObraContratoInfo {
+  contrato_numero: string;
+  instrumento_nome: string;
+  label: string;
 }
 
 interface Obra {
@@ -23,8 +36,11 @@ interface Obra {
   numero_contrato: string | null;
   objeto_contrato: string | null;
   valor_contrato: number | null;
+  instrumento_nome?: string | null;
   arquivos: Arquivo[];
   arquivos_contrato?: Arquivo[];
+  arquivos_contrato_base?: ArquivoContratoBase[];
+  obras_contrato_info?: { [obraId: number]: ObraContratoInfo };
 }
 
 interface ContratoOption {
