@@ -344,7 +344,7 @@ export default function ObraDetalhes({ obra, onClose }: ObraDetalhesProps) {
         <div className="bg-gray-100 p-4 border-t border-gray-200 flex justify-end">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium"
+            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
           >
             Fechar
           </button>

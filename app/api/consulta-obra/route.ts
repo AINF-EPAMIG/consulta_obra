@@ -47,9 +47,15 @@ export async function GET(request: NextRequest) {
         o.status_id,
         o.unidade_id,
         r.nome as regional_nome
-       FROM obra o
+       FROM (
+          SELECT 
+              *,
+              ROW_NUMBER() OVER (PARTITION BY contrato_numero ORDER BY id DESC) as rn
+          FROM obra
+       ) o
        LEFT JOIN regional r ON o.unidade_id = r.id
-       ${whereClause}
+       ${whereClause.replace('o.', '')}
+       AND o.rn = 1
        ORDER BY o.contrato_id DESC, o.id DESC`,
       queryParams
     );
@@ -250,13 +256,18 @@ export async function GET(request: NextRequest) {
     // Buscar contagem por status para o gráfico (com filtros aplicados)
     const [statusCount] = await connectionObras.query<RowDataPacket[]>(
       `SELECT 
-        o.status_id,
-        COUNT(*) as total
-       FROM obra o
-       ${whereClause}
-       GROUP BY o.status_id,
-       o.status_id
-       ORDER BY o.status_id ASC,o.status_id ASC`,
+          status_id,
+          COUNT(*) as total
+       FROM (
+          SELECT 
+              o.status_id,
+              ROW_NUMBER() OVER (PARTITION BY o.contrato_numero ORDER BY o.id DESC) as rn
+          FROM obra o
+          ${whereClause}
+       ) as subquery
+       WHERE rn = 1
+       GROUP BY status_id
+       ORDER BY status_id ASC`,
       queryParams
     );
 
