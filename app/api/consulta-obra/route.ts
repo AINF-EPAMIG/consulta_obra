@@ -26,8 +26,10 @@ export async function GET(request: NextRequest) {
     }
     
     if (unidadeId && unidadeId !== 'all') {
-      whereConditions.push('o.unidade_id = ?');
-      queryParams.push(parseInt(unidadeId));
+      // Filtrar tanto pela unidade da obra quanto pela área do histórico (area_idh)
+      whereConditions.push('(o.unidade_id = ? OR EXISTS (SELECT 1 FROM historico h WHERE h.id = o.contrato_id AND h.area_idh = ?))');
+      const parsed = parseInt(unidadeId);
+      queryParams.push(parsed, parsed);
     }
     
     const whereClause = whereConditions.length > 0 
