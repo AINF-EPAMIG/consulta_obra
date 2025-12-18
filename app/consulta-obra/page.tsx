@@ -524,9 +524,8 @@ export default function ConsultaObra() {
                                         {obra.numero_contrato}
                                       </span>
                                     </div>
-                                    <span className="text-xs font-medium px-2 py-1 rounded" style={{ 
-                                      backgroundColor: '#025C3E',
-                                      color: 'white'
+                                    <span className="inline-flex items-center justify-center gap-3 px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-md min-w-[120px] whitespace-nowrap" style={{
+                                      backgroundColor: '#025C3E'
                                     }}>
                                       Ver detalhes
                                     </span>
@@ -555,7 +554,7 @@ export default function ConsultaObra() {
                             <td className="px-4 py-3 text-center">
                               <button
                                 onClick={() => abrirDetalhesObra(obra)}
-                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-90 transition-all hover:shadow-lg"
+                                className="relative inline-flex items-center justify-center gap-3 px-4 text-sm font-semibold text-white rounded-lg hover:opacity-95 transition-all shadow-md min-w-[120px] h-10 whitespace-nowrap"
                                 style={{ backgroundColor: '#025C3E' }}
                                 title="Ver detalhes da obra"
                               >
@@ -563,12 +562,8 @@ export default function ConsultaObra() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                 </svg>
-                                Ver Detalhes
-                                {obra.arquivos && obra.arquivos.length > 0 && (
-                                  <span className="ml-1 bg-white bg-opacity-30 px-2 py-0.5 rounded-full text-xs">
-                                    {obra.arquivos.length}
-                                  </span>
-                                )}
+                                <span>Ver Detalhes</span>
+                                {/* contagem de arquivos removida conforme solicitado */}
                               </button>
                             </td>
                           </tr>

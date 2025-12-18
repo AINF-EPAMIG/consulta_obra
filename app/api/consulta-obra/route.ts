@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     console.log(`IDs únicos de contratos a buscar: ${contratoIds.join(', ')}`);
     
     // Buscar todos os contratos de uma vez (mais eficiente)
-    const contratosMap = new Map<number, { numero_contrato?: string; objetoh?: string; valor?: number; instrumento_nome?: string }>();
+    const contratosMap = new Map<number, { numero_contrato?: string; objetoh?: string; valor?: number; instrumento_nome?: string; nome_area?: string | null }>();
     if (contratoIds.length > 0) {
       const placeholders = contratoIds.map(() => '?').join(',');
 
@@ -104,10 +104,13 @@ export async function GET(request: NextRequest) {
 
       // Buscar dados no `historico` para todos os IDs — usar `valorh` como fonte primária do valor
       const placeholdersHistAll = contratoIds.map(() => '?').join(',');
+
+      // Fazer JOIN explícito com `area` via `area_idh` e selecionar `nome_area`
       const [contratosHistAll] = await connectionContratos.query<RowDataPacket[]>(
-        `SELECT h.id, h.numero_contratoh, h.objetoh, h.dotacao_orcamentariah, h.valorh, i.nome_instrumento
+        `SELECT h.id, h.numero_contratoh, h.objetoh, h.dotacao_orcamentariah, h.valorh, i.nome_instrumento, a.nome_area
          FROM historico h
          LEFT JOIN instrumento i ON i.id = h.instrumento_id
+         LEFT JOIN area a ON a.id = h.area_idh
          WHERE h.id IN (${placeholdersHistAll})
          ORDER BY CAST(SUBSTRING_INDEX(h.numero_contratoh, '/', 1) AS UNSIGNED) DESC, h.id DESC`,
         contratoIds
@@ -123,6 +126,7 @@ export async function GET(request: NextRequest) {
           // Priorizar valorh do historico (valorh) como número
           valor: Number(contrato.valorh as unknown) || undefined,
           instrumento_nome: contrato.nome_instrumento as string || 'Sem instrumento',
+          nome_area: contrato.nome_area as string || null,
         });
         console.log(`✅ Contrato (hist) ${id}: ${contrato.numero_contratoh} - Valor: R$ ${contrato.valorh || 'NULL'}`);
       });
@@ -286,6 +290,7 @@ export async function GET(request: NextRequest) {
             objeto_contrato: contrato?.objetoh || null,
             valor_contrato: contrato?.valor ?? null,
             instrumento_nome: contrato?.instrumento_nome || null,
+            regional_nome: contrato?.nome_area || obra.regional_nome,
             arquivos: arquivos.map((arq: RowDataPacket) => ({
               id: arq.id,
               tipo: (arq.tipo as string) || 'Arquivo',
@@ -339,10 +344,28 @@ export async function GET(request: NextRequest) {
       queryParams
     );
 
-    // Buscar lista de regionais para o filtro
-    const [regionais] = await connectionObras.query<RowDataPacket[]>(
-      `SELECT id, nome FROM regional ORDER BY nome ASC`
-    );
+    // Buscar lista de regionais/áreas para o filtro
+    let regionais: RowDataPacket[] = [];
+      try {
+      // Preferir lista de áreas (nome_area) se disponível na base de contratos
+      const [areas] = await connectionContratos.query<RowDataPacket[]>(
+        `SELECT id, nome_area as nome FROM area WHERE situacao_area = 'Ativo' ORDER BY nome_area ASC`
+      );
+      if (areas && areas.length > 0) {
+        regionais = areas;
+      } else {
+        const [reg] = await connectionObras.query<RowDataPacket[]>(
+          `SELECT id, nome FROM regional ORDER BY nome ASC`
+        );
+        regionais = reg;
+      }
+    } catch (areaErr) {
+      console.warn('Não foi possível listar `area`, usando `regional` como fallback:', areaErr);
+      const [regFallback] = await connectionObras.query<RowDataPacket[]>(
+        `SELECT id, nome FROM regional ORDER BY nome ASC`
+      );
+      regionais = regFallback;
+    }
 
     console.log(`Total de status diferentes: ${statusCount.length}`);
 
